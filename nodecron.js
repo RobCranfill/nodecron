@@ -11,33 +11,20 @@ var Querystring	= require("querystring");
 var Transform		= require("stream").Transform;
 var Url					= require("url");
 
-var  SERVER_PATH_NAME = "/cron";
+var  SERVER_PATH_NAME = "/nodecron";
+
+// Content types map - the only things we'll serve
+//
+var contentTypes_ = {
+	'.css' : 'text/css'
+//	'.htm' : 'text/html',
+//	'.html': 'text/html',
+//	'.js'  : 'text/javascript',
+//	'.json': 'application/json',
+	};
+
 
 var 	requestCount_ = 0;
-
-
-/*
-	'u' param doesn't work: must be current user or "".
-*/
-function loadCrontab(u) {
-	Crontab.load(u, function(err, crontab) {
-		if (crontab) {
-		
-//			console.log("Jobs for " + u);
-//			var j = crontab.jobs();
-//			for (var i=0; i<j.length; i++) {
-//				console.log(j[i].toString());
-//				}
-
-			formPage(crontab.jobs());
-			}
-		else {
-			console.log("Can't get jobs for " + u);
-			return;
-			}
-	
-	  });
-	}
 
 
 function formPage(jobList) {
@@ -45,6 +32,9 @@ function formPage(jobList) {
 	}
 
 
+/*
+	Decide what to do with a given HTTP request (a GET).
+*/
 function router(req, resp) {
 
   console.log("-----------------------------------");
@@ -65,11 +55,11 @@ function router(req, resp) {
 	
 	// 'path' is the whole deal
 	//
-	if (parsedURL.pathname !== SERVER_PATH_NAME) {
-		console.log(" not for us! (" + parsedURL.pathname + ")");
-		handleBadRequest(resp);
-	  return;
-		}
+//	if (parsedURL.pathname !== SERVER_PATH_NAME) {
+//		console.log(" not for us! (" + parsedURL.pathname + ")");
+//		handleBadRequest(resp);
+//	  return;
+//		}
 
 	if (parsedURL.path === SERVER_PATH_NAME) {
 		console.log(" it's a top-level req!");
@@ -78,12 +68,57 @@ function router(req, resp) {
 		}
 
 	console.log(" it's some other req!");
-	handleBadRequest(resp); // not really
+	
+	
+  // Get the extension; is it a special file we'll handle?
+  //
+  var extension = Path.extname(url);
+	console.log("Checking extension for '" + parsedURL.path + "': '" + extension + "'");
 
+  // Read the extension against the content type map.
+  //
+	if (extension.length > 0) {
+	  if (!contentTypes_[extension]) {
+			console.log("!Unknown content type! (" + extension + ")");
+			handleBadRequest(resp);
+			return;
+			}
+	  var contentType = contentTypes_[extension];
+	  console.log("contentType OK: " + contentType);
+
+	  // Serve the file
+		//
+		var filename = Path.basename(parsedURL.path);
+	 	console.log("Serving file: " + filename);
+		var fileStream = Fs.createReadStream(filename);
+		fileStream.on('error', function(error) {
+			if (error.code === 'ENOENT') {
+				resp.statusCode = 404;
+				resp.end(Http.STATUS_CODES[404]);
+			  console.log("!Error 404!");
+				} 
+			else {
+				resp.statusCode = 500;
+				resp.end(Http.STATUS_CODES[500]);
+			  console.log("!Error 500!");
+				}
+			});
+
+		resp.writeHead(200, {"Content-Type": contentType});
+		fileStream.pipe(resp);
+
+		console.log("File served!");
+
+		return;
+		}
+
+	handleBadRequest(resp);
 	} // router
 
 
-
+/*
+	Sequence of callbacks to handle a request on the main URL: show the HTML page.
+*/
 function doMainPageWaterfall(httpResponse, user) {
 
 	console.log(" doMainPageWaterfall!");
@@ -94,7 +129,7 @@ function doMainPageWaterfall(httpResponse, user) {
 	Async.waterfall(
 		[
 	
-		// 1st step: load the crontab data
+		// 1st step: Load the crontab data
 		//
 		function(nextFunction) {
 			console.log("loadCrontab called; user: " + user);
@@ -120,17 +155,71 @@ function doMainPageWaterfall(httpResponse, user) {
 		
 			httpResponse.write("<!DOCTYPE html>\n");
 			httpResponse.write("<html>\n");
-			httpResponse.write("  <header>\n");
-			httpResponse.write("    <title>Jobs</title>\n");
-			httpResponse.write("  </header>\n");
+			httpResponse.write("<head>\n");
+			httpResponse.write("  <title>nodecron 0.1</title>\n");
+			httpResponse.write("  <link rel='stylesheet' type='text/css' href='" + SERVER_PATH_NAME + "/nodecron.css'/>\n");
+			
+
+			httpResponse.write("\
+<script>\
+ function deleteEntry(entryIndex)\
+  {\
+  console.log('deleteEntry=' + entryIndex);\
+  }\
+ function addEntry()\
+  {\
+  console.log('addEntry');\
+  }\
+</script>\n");
+
+		
+			httpResponse.write("</head>\n");
+
 			httpResponse.write("<body>\n");
 
-			httpResponse.write("<h3>Jobs</h3>\n");
-			httpResponse.write(" <tt><table>\n");
+			httpResponse.write("<table border='1'>\n");
+
+			// The table header.
+			//
+			httpResponse.write(" <tr>\n");
+			httpResponse.write("  <th>-</th>\n");
+			httpResponse.write("  <th>Min</th>\n");
+			httpResponse.write("  <th>Hr</th>\n");
+			httpResponse.write("  <th>DoM</th>\n");
+			httpResponse.write("  <th>Mon</th>\n");
+			httpResponse.write("  <th>DoW</th>\n");
+			httpResponse.write("  <th>Command</th>\n");
+			httpResponse.write(" </tr>\n");
+		
+			// A row for each existing entry.
+			//
 			for (var i=0; i<jobs.length; i++) {
-				httpResponse.write("  <tr><td>" + jobs[i].toString() + "</td></tr>");
+
+				// httpResponse.write("   <tr><td>" + jobs[i].toString() + "</td></tr>");
+				var job = jobs[i];
+				httpResponse.write(" <tr>\n");
+				httpResponse.write("  <td><button type='button' onClick='deleteEntry(\"" + i + "\")'>-</button></td>\n");
+				httpResponse.write("  <td class='tableMinute'>" + job.minute() + "</td>\n");
+				httpResponse.write("  <td class='tableHour'>" + job.hour() + "</td>\n");
+				httpResponse.write("  <td class='tableDayOfMonth'>" + job.dom() + "</td>\n");
+				httpResponse.write("  <td class='tableMonth'>" + job.month() + "</td>\n");
+				httpResponse.write("  <td class='tableDayOfWeek'>" + job.dow() + "</td>\n");
+				httpResponse.write("  <td class='tableCommand'>" + job.command() + "</td>\n");
+				httpResponse.write(" </tr>\n");
+		
 				}
-			httpResponse.write(" </table></tt>\n");
+				
+			// The 'Add' row.
+			//
+			httpResponse.write(" <tr>\n");
+			httpResponse.write(" <td><button type='button' onClick='addEntry()'>+</button></td>\n");
+			httpResponse.write(" <td><input class='inputMinute'			type='text' name='inputMinute'></td>\n");
+			httpResponse.write(" <td><input class='inputHour'				type='text' name='inputHour'></td>\n");
+			httpResponse.write(" <td><input class='inputDayOfMonth'	type='text' name='inputDayOfMonth'></td>\n");
+			httpResponse.write(" <td><input class='inputMonth'			type='text' name='inputMonth'></td>\n");
+			httpResponse.write(" <td><input class='inputDayOfWeek'	type='text' name='inputDayOfWeek'></td>\n");
+			httpResponse.write(" <td><input class='inputCommand'		type='text' name='inputCommand'></td>\n");
+			httpResponse.write(" </tr>\n");
 
 			httpResponse.write("</body>\n");
 			httpResponse.write("</html>\n");
@@ -186,31 +275,6 @@ function doMainPageWaterfall(httpResponse, user) {
 	} // doMainPageWaterfall
 
 
-/*
-*/
-function showStartPage(resp) {
-
-	loadCrontab(resp);
-	
-	resp.writeHead(200, {"Content-Type": "text/html"});
-	
-	resp.write("<!DOCTYPE html>\n");
-	resp.write("<html>\n<header>\n");
-	
-	var header = "";
-	resp.write(header);
-	
-	resp.write("</header>\n<body>\n");
-	
-	var body = "<p>What the f?</p>\n";
-	resp.write(body);
-	
-	resp.write("</body>\n</html>\n");
-
-	resp.end();
-	console.log("showStartPage OK");
-	}
-
 
 function start(router) {
 
@@ -236,6 +300,5 @@ function handleBadRequest(resp) {
 
 start(router);
 
-// loadCrontab("");
 
 

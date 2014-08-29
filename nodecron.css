@@ -1,0 +1,24 @@
+/* Table-related
+*/
+td
+	{
+	font-family: Courier;
+	font-size: 14px
+	}
+
+// .thingsYouCanDo		{width: 20px; text-align: right; color: green; font-size: 48px}
+
+.tableMinute		{width:  20px}
+.tableHour			{width:  20px}
+.tableDayOfMonth	{width:  20px}
+.tableMonth			{width:  20px}
+.tableDayOfWeek		{width:  20px}
+ // need to specify again for 'text' field - why?
+.tableCommand		{width: 500px; font-family: Courier}
+
+.inputMinute		{width:  15px; font-family: Courier}
+.inputHour			{width:  15px; font-family: Courier}
+.inputDayOfMonth	{width:  15px; font-family: Courier}
+.inputMonth			{width:  15px; font-family: Courier}
+.inputDayOfWeek		{width:  15px; font-family: Courier}
+.inputCommand		{width: 495px; font-family: Courier}
