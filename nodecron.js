@@ -3,7 +3,7 @@
 	A Node.js-based editor for 'crontab'.
 	robcranfill@gmail.com
 */
-Crontab = require("crontab");
+var Crontab			= require("crontab");
 var Async 			= require("async");
 var Exec				= require("child_process");
 var Fs				  = require("fs");
@@ -15,21 +15,22 @@ var Url					= require("url");
 
 var  SERVER_PATH_NAME = "/nodecron";
 
-// Content types map - the only things we'll serve
+// Content types map, indicated the only file types we'll serve.
+// (why limit it?)
 //
 var contentTypes_ = {
-	'.css' : 'text/css'
-//	'.htm' : 'text/html',
-//	'.html': 'text/html',
-//	'.js'  : 'text/javascript',
-//	'.json': 'application/json',
+	".css":	"text/css",
+	".js":	"text/javascript"
+//	".html": "text/html",
+//	".json": "application/json",
 	};
 
 
 var requestCount_ = 0;
 
-// The crontab job entries that we load on startup.
-var jobs_;
+// The crontab and its job entries that we load on startup. XXX globals?!
+var crontab_;
+// var jobs_;
 
 
 
@@ -41,18 +42,59 @@ function router(req, resp) {
   console.log("-----------------------------------");
 	requestCount_++;
 
+	if (req.method == "POST") {
+		var body = "";
+		req.on("data", function (data) {
+			body += data;
+			
+			// Too much POST data, kill the connection
+			if (body.length > 1e3) {
+				console.log("POST flood rejected!");
+				// is it rude to just do this in the middle of the data stream?
+        resp.writeHead(413, "Request Entity Too Large", {"Content-Type": "text/html"});
+        resp.end("<!doctype html><html><head><title>413</title></head><body>413: Request Entity Too Large</body></html>");
+				}
+			});
+		req.on("end", function () {
+			var post = Querystring.parse(body);
+
+			// use post["blah"], etc.
+			
+			console.log("POST data: %j", post);
+			handlePOST(resp, post);
+			return;
+
+			});
+		return;
+		}
+
 	var url = req.url;
   var parsedURL = Url.parse(url);
-  console.log("Request #" + requestCount_ + " for path " + parsedURL.pathname + " received.");
-	console.log("pathname: " + parsedURL.pathname);
-	console.log("    path: " + parsedURL.path);
-	console.log("    href: " + parsedURL.href);
-		console.log("  search: " + parsedURL.search);
-//	console.log("   query: " + JSON.stringify(parsedURL.query));
-	console.log("   query: " + parsedURL.query);
+  console.log("Request #%d for path %s received.", requestCount_, parsedURL.pathname);
+	console.log("pathname: %s", parsedURL.pathname);
+	console.log("    path: %s", parsedURL.path);
+	console.log("    href: %s", parsedURL.href);
+	console.log("  search: %s", parsedURL.search);
+//	console.log("   query: %s", JSON.stringify(parsedURL.query));
+	console.log("   query: %s", parsedURL.query);
+
+
+
+
+/* this doesn't work?
+	// A refresh?
+	// Check this before the URL, cuz URL will just be "/nodecron"
+	//
+	console.log("   resp.statusCode: " + resp.statusCode);
+  if (resp.statusCode == 302)
+	  {
+	  console.log("* it's a refresh request");
+	  handleBadRequest(resp); // wrong
+		}
+*/
 
 	if (parsedURL.path === SERVER_PATH_NAME) {
-		console.log("* it's a top-level req!");
+		console.log("* it's a top-level req");
 		doMainPageWaterfall(resp, "");	// FIXME: just the current user, for now.
 		return;
 		}
@@ -62,42 +104,39 @@ function router(req, resp) {
 	// ?
 	//
 	if (parsedURL.query) {
-		console.log("* it's a query!");
-		doQuery(resp, parsedURL.query);
-		return;
-		}
-		
-	if (parsedURL.path === SERVER_PATH_NAME) {
-		console.log("* it's a top-level req!");
-		doMainPageWaterfall(resp, "");	// FIXME: just the current user, for now.
+		console.log("* it's a query/GET");
+		handleGET(resp, parsedURL.query);
 		return;
 		}
 
-	console.log("* it's some other req!");
 
-  // Get the extension; is it a special file we'll handle?
-  //
+	console.log("* it's some other req");
+
+  // Get the extension; is it of a type we'll serve?
+  // (I'm not sure why we bother with this - why not just serve *all* files requested?)
+	// (We'd have to know the proper content type, of course.)
+	//
   var extension = Path.extname(url);
-	console.log("Checking extension for '" + parsedURL.path + "': '" + extension + "'");
+	console.log("Checking extension for '%s': '%s'", parsedURL.path, extension);
 
   // Read the extension against the content type map.
   //
 	if (extension.length > 0) {
 	  if (!contentTypes_[extension]) {
-			console.log("!Unknown content type! (" + extension + ")");
+			console.log("!Unknown content type '%s'!", extension);
 			handleBadRequest(resp);
 			return;
 			}
 	  var contentType = contentTypes_[extension];
 	  console.log("contentType OK: " + contentType);
 
-	  // Serve the file
+	  // Serve the requested file.
 		//
 		var filename = Path.basename(parsedURL.path);
 	 	console.log("Serving file: " + filename);
 		var fileStream = Fs.createReadStream(filename);
-		fileStream.on('error', function(error) {
-			if (error.code === 'ENOENT') {
+		fileStream.on("error", function(error) {
+			if (error.code === "ENOENT") {
 				resp.statusCode = 404;
 				resp.end(Http.STATUS_CODES[404]);
 			  console.log("!Error 404!");
@@ -112,7 +151,7 @@ function router(req, resp) {
 		resp.writeHead(200, {"Content-Type": contentType});
 		fileStream.pipe(resp);
 
-		console.log("File served!");
+		console.log("File served");
 
 		return;
 		}
@@ -130,16 +169,18 @@ function router(req, resp) {
 				Add entry with given values
 
 */
-function doQuery(httpResp, queryString) {
-	var parsedQuery = Querystring.parse(queryString);
-	console.log("parsedQuery: " + JSON.stringify(parsedQuery));
+function handlePOST(httpResp, parsedQuery) {
+
+//	var parsedQuery = Querystring.parse(queryString);
+//	console.log("parsedQuery: " + JSON.stringify(parsedQuery));
 
 	var action = parsedQuery["action"];
 	if (!action) {
 		console.log("!No 'action' param!");
 		return;
 		}
-		
+	console.log("handlePOST: action: " + action);
+
 	// Action = delete?
 	//
 	if (action === "delete") {
@@ -149,24 +190,40 @@ function doQuery(httpResp, queryString) {
 			handleBadRequest(httpResp);
 			return;
 		}
-
 		console.log("delete #" + index);
-		console.log(" - which is: " + jobs_[index]);
-		if (!jobs_[index]) {
-			httpResp.end("Index out of bounds?")
+		console.log(" - which is: " + crontab_.jobs()[index]);
+		if (!crontab_.jobs()[index]) {
+//			httpResp.end("Index out of bounds?")
+			handleBadRequest(httpResp);
 			return;
 			}
-		crontab_.remove(jobs_[index]);
-		
-		jobs_ = crontab_.jobs();
-		console.log("jobs are now: " + jobs_);
-		
+
+		crontab_.remove(crontab_.jobs()[index]);
+		console.log("jobs are now " + crontab_.jobs().length + ": " + crontab_.jobs());
+
 // A little test for what if something goes wrong: puke on #3
-//		if (index == 3){httpResp.end("NOK");} // is this all we do?
-//		else
-//		{
-		httpResp.end("OK"); // is this all we do?
-//		}
+		var puke_on = -1; // -1 or 3;
+		if (index == puke_on)
+			{
+			httpResp.end("Actually OK - test case 3"); // fail
+			}
+		else
+			{
+
+/* this doesn't work
+
+// how about a 'refresh'??
+//  var loc = "http://" + req.headers["host"] + ("/" !== req.url)?("/" + req.url):"";
+  var loc = "http://x10pi:9999" + SERVER_PATH_NAME;
+  console.log("Redirecting to: " + loc);
+  httpResp.statusCode = 302;
+  httpResp.setHeader("Location", loc);
+  httpResp.end();
+*/
+
+			doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
+
+			}
 		return;
 		}
 	else
@@ -188,9 +245,11 @@ function doQuery(httpResp, queryString) {
 			handleBadRequest(httpResp);
 			return;
 		}
+
+		console.log("End of add")
 		
+		// do what?
 		
-		console.log("add!");
 		}
 
 
@@ -198,14 +257,108 @@ function doQuery(httpResp, queryString) {
 	}
 
 
+/*
+	Query options (minus the spaces which are just for readability)
+			?action=delete & index=n
+				Delete entry {n}
 
+			?action=add & min=min & hr=hr & dom=dom & mon=mon & dow=dow & command=command
+				Add entry with given values
+
+*/
+function handleGET(httpResp, queryString) {
+
+	var parsedQuery = Querystring.parse(queryString);
+	console.log("parsedQuery: " + JSON.stringify(parsedQuery));
+
+	var action = parsedQuery["action"];
+	if (!action) {
+		console.log("!No 'action' param!");
+		return;
+		}
+	console.log("parsedQuery: action: " + action);
+
+	// Action = delete?
+	//
+	if (action === "delete") {
+		var index = parsedQuery["index"];
+		if (!index) {
+			console.log("!Missing 'index' param!");
+			handleBadRequest(httpResp);
+			return;
+		}
+		console.log("delete #" + index);
+		console.log(" - which is: " + crontab_.jobs()[index]);
+		if (!crontab_.jobs()[index]) {
+//			httpResp.end("Index out of bounds?")
+			handleBadRequest(httpResp);
+			return;
+			}
+
+		crontab_.remove(crontab_.jobs()[index]);
+		console.log("jobs are now " + crontab_.jobs().length + ": " + crontab_.jobs());
+
+// A little test for what if something goes wrong: puke on #3
+		var puke_on = -1; // -1 or 3;
+		if (index == puke_on)
+			{
+			httpResp.end("Actually OK - test case 3"); // fail
+			}
+		else
+			{
+
+/* this doesn't work
+
+// how about a 'refresh'??
+//  var loc = "http://" + req.headers["host"] + ("/" !== req.url)?("/" + req.url):"";
+  var loc = "http://x10pi:9999" + SERVER_PATH_NAME;
+  console.log("Redirecting to: " + loc);
+  httpResp.statusCode = 302;
+  httpResp.setHeader("Location", loc);
+  httpResp.end();
+*/
+
+			doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
+
+			}
+		return;
+		}
+	else
+	
+	// Action = add?
+	//
+	if (action === "add") {
+
+		var q_min = parsedQuery["min"];
+		var q_hr  = parsedQuery["hr"];
+		var q_dom = parsedQuery["dom"];
+		var q_mon = parsedQuery["mon"];
+		var q_dow = parsedQuery["dow"];
+		var q_command = parsedQuery["command"];
+		
+		if (!q_min || !q_hr || !q_dom || !q_mon || !q_dow || !q_command) {
+			console.log("!Missing some 'add' param (you figure it out)!");
+			console.log(" - query was '" + queryString + "'");
+			handleBadRequest(httpResp);
+			return;
+		}
+
+		console.log("End of add")
+		
+		// do what?
+		
+		}
+
+
+	handleBadRequest(httpResp); // really?
+	}
 
 /*
 	Sequence of callbacks to handle a request on the main URL: show the HTML page.
 */
 function doMainPageWaterfall(httpResponse, user) {
 
-	console.log("* doMainPageWaterfall!");
+	console.log("* doMainPageWaterfall");
 	
 	// see http://www.hacksparrow.com/node-js-async-programming.html
 	//  or https://github.com/caolan/async#waterfall
@@ -216,60 +369,77 @@ function doMainPageWaterfall(httpResponse, user) {
 		// 1st step: Load the crontab data
 		//
 		function(nextFunction) {
-			console.log("loadCrontab called; user: " + user);
-			Crontab.load(user, function(err, crontab) {
-			  console.log("loadCrontab.load called");
-				if (crontab) {
-				
-					// ICK: globals! probably wrong???
+			console.log("loadCrontab called for user '%s'", user);
+			
+			if (crontab_)
+			  {
+			  console.log("We already have one!");
+			  nextFunction(null, httpResponse, crontab_);
+			  }
+			else
+				{
+				console.log("Setting up loadCrontab.load...");
+				Crontab.load(user, function(err, crontab) {
+
+				  console.log("loadCrontab.load called");
+				  if (err) {
+				  	console.log("Error in loadCrontab.load: " +_err);
+						nextFunction(err, null, null);	// ??? RIGHT?
+				  	}
+				  if (!crontab)
+				  	{
+				  	console.log("Can't get jobs for " + user);
+						nextFunction("Can't get jobs?", null, null);	// ??? RIGHT?
+						return;
+						}
 					crontab_ = crontab;
-					jobs_ = crontab.jobs();
-					console.log("Jobs out: " + crontab.jobs());
-					nextFunction(null, httpResponse, crontab.jobs());
-					}
-				else {
-					console.log("Can't get jobs for " + user);
-					return;
-					}
-		  	});
-			},
+					console.log("Loaded crontab.jobs: " + crontab_.jobs());
+
+					nextFunction(null, httpResponse, crontab_);
+					}); // end .load handler
+
+				} // end else
+			} // end 1st step function
+ 		,
 
 		// 2nd step: Form the HTML
 		//
-		function(httpResponse, jobs, nextFunction) {
-			console.log("makePage called");
-			
+		function(httpResponse, crontab, nextFunction) {
+		
+			// Start outputting the response - first the static HTML, then our crontab stuff.
+			//
+			httpResponse.writeHead(200, {"Content-Type": "text/html"});
+
+			console.log("Forming HTML for crontab with %d jobs", crontab.jobs().length);
+//			console.log("makePage httpResponse: %j", httpResponse);
+
 			var fileStream = Fs.createReadStream("./nodecron.top.html");
-			fileStream.on('error', function(error) {
-				if (error.code === 'ENOENT') {
+			fileStream.on("error", function(error) {
+				if (error.code === "ENOENT") {
 					httpResponse.statusCode = 404;
 					httpResponse.end(Http.STATUS_CODES[404]);
 				  console.log("!Error 404!");
-					} 
+					}
 				else {
 					httpResponse.statusCode = 500;
 					httpResponse.end(Http.STATUS_CODES[500]);
 				  console.log("!Error 500!");
 					}
 				});
-			console.log("File loaded.");
-
-			// Start outputting the response - first the static HTML, then our crontab stuff.
-			//
-			httpResponse.writeHead(200, {"Content-Type": "text/html"});
-
 			// We want to append all this *after* the header is done.
 			//
-			fileStream.on('end', function() {
+			fileStream.on("end", function() {
+
+				console.log("Static HTML file loaded; appending variable HTML for %d jobs...", crontab.jobs().length);
 
 				// A row for each existing entry.
 				//
-				for (var i=0; i<jobs.length; i++) {
+				for (var i=0; i<crontab.jobs().length; i++) {
 	
 					// httpResponse.write("   <tr><td>" + jobs[i].toString() + "</td></tr>");
-					var job = jobs[i];
+					var job = crontab.jobs()[i];
 					httpResponse.write(" <tr>\n");
-					httpResponse.write("  <td><button type='button' onClick='deleteEntry(\"" + i + "\")'>-</button></td>\n");
+					httpResponse.write("  <td><button type='button' onClick='deleteEntry(\"" + i + "\");return false'>-</button></td>\n");
 					httpResponse.write("  <td class='tableMinute'>" + job.minute() + "</td>\n");
 					httpResponse.write("  <td class='tableHour'>" + job.hour() + "</td>\n");
 					httpResponse.write("  <td class='tableDayOfMonth'>" + job.dom() + "</td>\n");
@@ -297,24 +467,32 @@ function doMainPageWaterfall(httpResponse, user) {
 				httpResponse.end();
 
 	//			nextFunction(null, "makePage done - OK!");	// end, for now
+	
+				console.log("Done appending variable HTML.");
+
 				});
 
 			// Start the piping of the static header; when it's done, the above function will fire.
 			//
-			fileStream.pipe(httpResponse, {end: false});
+			console.log("Loading static HTML file....");
+
+//			fileStream.pipe(httpResponse, {end: false});
+			fileStream.pipe(httpResponse);
 
 			}
+		],
 
-			],
-
-	// The final callback function - error handler.
-	function(err, status) {
-	  console.log("Waterfall error: " + status);
-		}
+		// The final callback function: an error handler.
+		//
+		function(err, status) {
+			if (err) {
+	  		console.log("Waterfall error: " + status);
+	  		}
+			}
 
 	);
 	
-	console.log("* end doMainPageWaterfall (but still cooking!)");
+	console.log("* end doMainPageWaterfall (but still cooking)");
 	} // doMainPageWaterfall
 
 
@@ -322,8 +500,8 @@ function doMainPageWaterfall(httpResponse, user) {
 function start(router) {
 
   function onRequest(request, response) {
-  	if (request.method !== "GET") {
-			console.log("!Not a GET!");
+  	if (request.method !== "GET" && request.method !== "POST") {
+			console.log("!Not a GET or POST!");
 			handleBadRequest(response);
 			return;
 			}
