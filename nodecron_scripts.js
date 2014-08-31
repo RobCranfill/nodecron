@@ -2,6 +2,11 @@
 	nodecron support scripts, called by the HTML (not exectued by Node.js)
 */
 
+
+/*
+	Javascript handler for one of the "-" buttons.
+	Will do an AJAX 'GET' to push the data across. Which is kinda wrong - not idempotent? It works...
+*/
 function deleteEntry(entryIndex){
 	console.log("deleteEntry #" + entryIndex);
 	$.ajax({
@@ -26,6 +31,11 @@ function deleteEntry(entryIndex){
 		// return value used?
 		}
 
+
+/*
+	Javascript handler for "+" button.
+	Will do an AJAX 'GET' to push the data across. Which is kinda wrong - not idempotent? It works...
+*/
 function addEntry(minute, hour, dom, month, dow, command){
 
 	var min = document.getElementById("inputMinute").value;
@@ -51,3 +61,22 @@ function addEntry(minute, hour, dom, month, dow, command){
 			}
 			);
 		}
+
+
+/*
+	Javascript handler for "Commit" button.
+*/
+function commit() {
+	console.log("COMMIT!");
+	}
+
+
+/*
+	Javascript handler for "Revert" button.
+*/
+function revert() {
+	console.log("REVERT!");
+	}
+	
+	
+

@@ -324,6 +324,11 @@ function doMainPageWaterfall(httpResponse, user) {
 				httpResponse.write(" <td><input type='text' class='inputCommand'    id='inputCommand'></td>\n");
 				httpResponse.write(" </tr>\n");
 	
+
+				httpResponse.write("<button type='button' onClick='commit()'>Commit</button>\n");
+				httpResponse.write("<button type='button' onClick='revert()'>Revert</button>\n");
+
+				
 				httpResponse.write("</body>\n");
 				httpResponse.write("</html>\n");
 				httpResponse.end();
