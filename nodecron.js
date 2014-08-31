@@ -138,8 +138,26 @@ function handleGET(httpResp, queryString) {
 		}
 	console.log("parsedQuery: action: " + action);
 
+	// Action = commmit?
+	//
+	if (action === "commit") {
+		console.log("Commit!");
+		handleGoodRequest(httpResp);
+		return;
+		}
+
+	// Action = revert?
+	//
+	else
+	if (action === "revert") {
+		console.log("Revert!");
+		handleGoodRequest(httpResp);
+		return;
+		}
+	
 	// Action = delete?
 	//
+	else
 	if (action === "delete") {
 		var index = parsedQuery["index"];
 		if (!index) {
@@ -170,10 +188,10 @@ function handleGET(httpResp, queryString) {
 			}
 		return;
 		}
-	else
 	
 	// Action = add?
 	//
+	else
 	if (action === "add") {
 
 		var q_min = parsedQuery["min"];
@@ -324,6 +342,7 @@ function doMainPageWaterfall(httpResponse, user) {
 				httpResponse.write(" <td><input type='text' class='inputCommand'    id='inputCommand'></td>\n");
 				httpResponse.write(" </tr>\n");
 	
+				httpResponse.write("</table>\n");
 
 				httpResponse.write("<button type='button' onClick='commit()'>Commit</button>\n");
 				httpResponse.write("<button type='button' onClick='revert()'>Revert</button>\n");
@@ -380,6 +399,17 @@ function start(router) {
   console.log("Server has started.");
 	}
 
+
+function handleGoodRequest(resp) {
+  msg = "OK";
+	resp.writeHead(200, 
+			{
+		  'Content-Length': msg.length,
+		  'Content-Type': 'text/plain'
+	  	}
+	  );
+	resp.end(msg);
+	}
 
 function handleBadRequest(resp) {
 	resp.statusCode = 404;

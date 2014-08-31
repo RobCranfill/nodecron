@@ -68,7 +68,19 @@ function addEntry(minute, hour, dom, month, dow, command){
 */
 function commit() {
 	console.log("COMMIT!");
-	}
+	$.ajax({
+			url: "nodecron",
+			data: {action: "commit"},
+			type: "get",
+			success: function(data, status, jqXHR){
+				if (jqXHR["status"] != "200") {
+					window.alert("Something bad happened in 'commit'!");
+					}
+				location.reload(true);	// needed, to refresh the page
+				}
+			}
+			);
+		}
 
 
 /*
@@ -76,7 +88,20 @@ function commit() {
 */
 function revert() {
 	console.log("REVERT!");
-	}
+	$.ajax({
+			url: "nodecron",
+			data: {action: "revert"},
+			type: "get",
+			success: function(data, status, jqXHR){
+				if (jqXHR["status"] != "200") {
+					window.alert("Something bad happened in 'revert'!");
+					}
+				location.reload(true);	// needed, to refresh the page
+				}
+			}
+			);
+		}
+
 	
 	
 
