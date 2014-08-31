@@ -157,15 +157,28 @@ function handleGET(httpResp, queryString) {
 	//
 	if (action === "commit") {
 		console.log("Commit!");
-		handleGoodRequest(httpResp);
+		
+		console.log("Setting up loadCrontab.save...");
+		CRONTAB.save(function(err, crontab) {
+
+			console.log("loadCrontab.save called");
+			if (err) {
+				console.log("Error in loadCrontab.save: " + err);
+				handleGoodRequest(httpResp);
+				return;
+				}
+			console.log("Saved %d jobs: %j", CRONTAB.jobs().length, CRONTAB.jobs());
+			handleGoodRequest(httpResp);
+			});
 		return;
-		}
+		} // commit
 
 	// Action = revert?
 	//
 	else
 	if (action === "revert") {
 		console.log("Revert!");
+		CRONTAB = null;
 		handleGoodRequest(httpResp);
 		return;
 		}
@@ -225,9 +238,11 @@ function handleGET(httpResp, queryString) {
 		
 		console.log("Add: %s %s %s %s %s %s", q_min, q_hr, q_dom, q_mon, q_dow, q_cmd);
 
+		var comment = " Added by nodecron " + (new Date()).toString();
+	
 		// This actually adds the job now:
 		//
-		var newjob = CRONTAB.create(q_cmd);
+		var newjob = CRONTAB.create(q_cmd, null, comment);
 		
 		newjob.minute().at(q_min);
 		newjob.hour().at(q_hr);
@@ -280,11 +295,10 @@ function doMainPageWaterfall(httpResponse, user) {
 
 				  console.log("loadCrontab.load called");
 				  if (err) {
-				  	console.log("Error in loadCrontab.load: " +_err);
+				  	console.log("Error in loadCrontab.load: " + err);
 						nextFunction(err, null, null);	// ??? RIGHT?
 				  	}
-				  if (!crontab)
-				  	{
+				  if (!crontab) {
 				  	console.log("Can't get jobs for " + user);
 						nextFunction("Can't get jobs?", null, null);	// ??? RIGHT?
 						return;
