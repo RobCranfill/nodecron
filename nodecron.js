@@ -30,43 +30,15 @@ var requestCount_ = 0;
 
 // The crontab and its job entries that we load on startup. XXX globals?!
 var crontab_;
-// var jobs_;
-
 
 
 /*
-	Decide what to do with a given HTTP request (a GET).
+	Decide what to do with a given HTTP GET request.
 */
 function router(req, resp) {
 
   console.log("-----------------------------------");
 	requestCount_++;
-
-	if (req.method == "POST") {
-		var body = "";
-		req.on("data", function (data) {
-			body += data;
-			
-			// Too much POST data, kill the connection
-			if (body.length > 1e3) {
-				console.log("POST flood rejected!");
-				// is it rude to just do this in the middle of the data stream?
-        resp.writeHead(413, "Request Entity Too Large", {"Content-Type": "text/html"});
-        resp.end("<!doctype html><html><head><title>413</title></head><body>413: Request Entity Too Large</body></html>");
-				}
-			});
-		req.on("end", function () {
-			var post = Querystring.parse(body);
-
-			// use post["blah"], etc.
-			
-			console.log("POST data: %j", post);
-			handlePOST(resp, post);
-			return;
-
-			});
-		return;
-		}
 
 	var url = req.url;
   var parsedURL = Url.parse(url);
@@ -75,23 +47,8 @@ function router(req, resp) {
 	console.log("    path: %s", parsedURL.path);
 	console.log("    href: %s", parsedURL.href);
 	console.log("  search: %s", parsedURL.search);
-//	console.log("   query: %s", JSON.stringify(parsedURL.query));
+
 	console.log("   query: %s", parsedURL.query);
-
-
-
-
-/* this doesn't work?
-	// A refresh?
-	// Check this before the URL, cuz URL will just be "/nodecron"
-	//
-	console.log("   resp.statusCode: " + resp.statusCode);
-  if (resp.statusCode == 302)
-	  {
-	  console.log("* it's a refresh request");
-	  handleBadRequest(resp); // wrong
-		}
-*/
 
 	if (parsedURL.path === SERVER_PATH_NAME) {
 		console.log("* it's a top-level req");
@@ -110,7 +67,7 @@ function router(req, resp) {
 		}
 
 
-	console.log("* it's some other req");
+	console.log("* it's some other req - for a file?");
 
   // Get the extension; is it of a type we'll serve?
   // (I'm not sure why we bother with this - why not just serve *all* files requested?)
@@ -169,107 +126,10 @@ function router(req, resp) {
 				Add entry with given values
 
 */
-function handlePOST(httpResp, parsedQuery) {
-
-//	var parsedQuery = Querystring.parse(queryString);
-//	console.log("parsedQuery: " + JSON.stringify(parsedQuery));
-
-	var action = parsedQuery["action"];
-	if (!action) {
-		console.log("!No 'action' param!");
-		return;
-		}
-	console.log("handlePOST: action: " + action);
-
-	// Action = delete?
-	//
-	if (action === "delete") {
-		var index = parsedQuery["index"];
-		if (!index) {
-			console.log("!Missing 'index' param!");
-			handleBadRequest(httpResp);
-			return;
-		}
-		console.log("delete #" + index);
-		console.log(" - which is: " + crontab_.jobs()[index]);
-		if (!crontab_.jobs()[index]) {
-//			httpResp.end("Index out of bounds?")
-			handleBadRequest(httpResp);
-			return;
-			}
-
-		crontab_.remove(crontab_.jobs()[index]);
-		console.log("jobs are now " + crontab_.jobs().length + ": " + crontab_.jobs());
-
-// A little test for what if something goes wrong: puke on #3
-		var puke_on = -1; // -1 or 3;
-		if (index == puke_on)
-			{
-			httpResp.end("Actually OK - test case 3"); // fail
-			}
-		else
-			{
-
-/* this doesn't work
-
-// how about a 'refresh'??
-//  var loc = "http://" + req.headers["host"] + ("/" !== req.url)?("/" + req.url):"";
-  var loc = "http://x10pi:9999" + SERVER_PATH_NAME;
-  console.log("Redirecting to: " + loc);
-  httpResp.statusCode = 302;
-  httpResp.setHeader("Location", loc);
-  httpResp.end();
-*/
-
-			doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
-
-			}
-		return;
-		}
-	else
-	
-	// Action = add?
-	//
-	if (action === "add") {
-
-		var q_min = parsedQuery["min"];
-		var q_hr  = parsedQuery["hr"];
-		var q_dom = parsedQuery["dom"];
-		var q_mon = parsedQuery["mon"];
-		var q_dow = parsedQuery["dow"];
-		var q_command = parsedQuery["command"];
-		
-		if (!q_min || !q_hr || !q_dom || !q_mon || !q_dow || !q_command) {
-			console.log("!Missing some 'add' param (you figure it out)!");
-			console.log(" - query was '" + queryString + "'");
-			handleBadRequest(httpResp);
-			return;
-		}
-
-		console.log("End of add")
-		
-		// do what?
-		
-		}
-
-
-	handleBadRequest(httpResp); // really?
-	}
-
-
-/*
-	Query options (minus the spaces which are just for readability)
-			?action=delete & index=n
-				Delete entry {n}
-
-			?action=add & min=min & hr=hr & dom=dom & mon=mon & dow=dow & command=command
-				Add entry with given values
-
-*/
 function handleGET(httpResp, queryString) {
 
 	var parsedQuery = Querystring.parse(queryString);
-	console.log("parsedQuery: " + JSON.stringify(parsedQuery));
+	console.log("parsedQuery: %f" + parsedQuery);
 
 	var action = parsedQuery["action"];
 	if (!action) {
@@ -306,20 +166,7 @@ function handleGET(httpResp, queryString) {
 			}
 		else
 			{
-
-/* this doesn't work
-
-// how about a 'refresh'??
-//  var loc = "http://" + req.headers["host"] + ("/" !== req.url)?("/" + req.url):"";
-  var loc = "http://x10pi:9999" + SERVER_PATH_NAME;
-  console.log("Redirecting to: " + loc);
-  httpResp.statusCode = 302;
-  httpResp.setHeader("Location", loc);
-  httpResp.end();
-*/
-
 			doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
-
 			}
 		return;
 		}
@@ -334,14 +181,16 @@ function handleGET(httpResp, queryString) {
 		var q_dom = parsedQuery["dom"];
 		var q_mon = parsedQuery["mon"];
 		var q_dow = parsedQuery["dow"];
-		var q_command = parsedQuery["command"];
+		var q_cmd = parsedQuery["command"];
 		
-		if (!q_min || !q_hr || !q_dom || !q_mon || !q_dow || !q_command) {
+		if (!q_min || !q_hr || !q_dom || !q_mon || !q_dow || !q_cmd) {
 			console.log("!Missing some 'add' param (you figure it out)!");
 			console.log(" - query was '" + queryString + "'");
 			handleBadRequest(httpResp);
 			return;
 		}
+		
+		console.log("Add: %s %s %s %s %s %s", q_min, q_hr, q_dom, q_mon, q_dow, q_cmd);
 
 		console.log("End of add")
 		
@@ -352,6 +201,7 @@ function handleGET(httpResp, queryString) {
 
 	handleBadRequest(httpResp); // really?
 	}
+
 
 /*
 	Sequence of callbacks to handle a request on the main URL: show the HTML page.
@@ -454,12 +304,12 @@ function doMainPageWaterfall(httpResponse, user) {
 				//
 				httpResponse.write(" <tr>\n");
 				httpResponse.write(" <td><button type='button' onClick='addEntry()'>+</button></td>\n");
-				httpResponse.write(" <td><input type='text' class='inputMinute'     name='inputMinute'></td>\n");
-				httpResponse.write(" <td><input type='text' class='inputHour'       name='inputHour'></td>\n");
-				httpResponse.write(" <td><input type='text' class='inputDayOfMonth' name='inputDayOfMonth'></td>\n");
-				httpResponse.write(" <td><input type='text' class='inputMonth'      name='inputMonth'></td>\n");
-				httpResponse.write(" <td><input type='text' class='inputDayOfWeek'  name='inputDayOfWeek'></td>\n");
-				httpResponse.write(" <td><input type='text' class='inputCommand'    name='inputCommand'></td>\n");
+				httpResponse.write(" <td><input type='text' class='inputMinute'     id='inputMinute'></td>\n");
+				httpResponse.write(" <td><input type='text' class='inputHour'       id='inputHour'></td>\n");
+				httpResponse.write(" <td><input type='text' class='inputDayOfMonth' id='inputDayOfMonth'></td>\n");
+				httpResponse.write(" <td><input type='text' class='inputMonth'      id='inputMonth'></td>\n");
+				httpResponse.write(" <td><input type='text' class='inputDayOfWeek'  id='inputDayOfWeek'></td>\n");
+				httpResponse.write(" <td><input type='text' class='inputCommand'    id='inputCommand'></td>\n");
 				httpResponse.write(" </tr>\n");
 	
 				httpResponse.write("</body>\n");
@@ -500,8 +350,8 @@ function doMainPageWaterfall(httpResponse, user) {
 function start(router) {
 
   function onRequest(request, response) {
-  	if (request.method !== "GET" && request.method !== "POST") {
-			console.log("!Not a GET or POST!");
+  	if (request.method !== "GET") {
+			console.log("!Not a GET!");
 			handleBadRequest(response);
 			return;
 			}
