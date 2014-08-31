@@ -8,12 +8,15 @@ function deleteEntry(entryIndex){
 			url: "nodecron",
 			data: {action: "delete", index: entryIndex},
 			type: "get",
-			success: function(output){
-				console.log("got response");
-				// TODO: check status; if other than 200, handle error?
-				if (output !== "OK"){
-					console.log("'Delete' response was: \n" + output);
-					// window.alert("Something bad happened in 'delete'! ('" + output + "')");
+			success: function(data, status, jqXHR){
+
+			//	console.log("'Add' data: %j\n", data);
+			//	console.log("'Add' status: %j\n", status);
+			//	console.log("'Add' jqXHR: %j\n",  jqXHR);
+			//	console.log("'Add' jqXHR.status: %d\n",  jqXHR["status"]);
+				
+				if (jqXHR["status"] != "200"){
+					window.alert("Something bad happened in 'delete'!");
 					}
 				location.reload(true);	// needed, to refresh the page
 				// return value used?
@@ -39,9 +42,8 @@ function addEntry(minute, hour, dom, month, dow, command){
 			data: {action: "add",
 						 min: min, hr: hr, dom: dom, mon: mon, dow: dow, command: cmd},
 			type: "get",
-			success: function(output){
-				console.log("'Add' response was: \n" + output);
-				if (output !== "OK"){
+			success: function(data, status, jqXHR){
+				if (jqXHR["status"] != "200"){
 					window.alert("Something bad happened in 'add'!");
 					}
 				location.reload(true);	// needed, to refresh the page

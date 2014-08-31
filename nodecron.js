@@ -192,10 +192,22 @@ function handleGET(httpResp, queryString) {
 		
 		console.log("Add: %s %s %s %s %s %s", q_min, q_hr, q_dom, q_mon, q_dow, q_cmd);
 
+		var newjob = crontab_.create(q_cmd);
+		newjob.minute().at(q_min);
+		newjob.hour().at(q_hr);
+		newjob.dom().on(q_dom);
+		newjob.month().on(q_mon);
+		newjob.dow().on(q_dow);
+
+		console.log("newjob is %j", newjob);
+
+//		crontab_.add(newjob);
+
+		console.log("jobs are now %d: %j", crontab_.jobs().length, crontab_.jobs());
+
 		console.log("End of add")
-		
-		// do what?
-		
+		doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
+		return;
 		}
 
 
@@ -258,7 +270,7 @@ function doMainPageWaterfall(httpResponse, user) {
 		
 			// Start outputting the response - first the static HTML, then our crontab stuff.
 			//
-			httpResponse.writeHead(200, {"Content-Type": "text/html"});
+			httpResponse.writeHead(200, {"Content-Type": "text/html; charset=utf-8"});
 
 			console.log("Forming HTML for crontab with %d jobs", crontab.jobs().length);
 //			console.log("makePage httpResponse: %j", httpResponse);
