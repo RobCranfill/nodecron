@@ -1,5 +1,8 @@
 /*
 	nodecron support scripts, called by the HTML (not exectued by Node.js)
+	
+	Code conventions more or less as per http://javascript.crockford.com/code.html
+	"Avoid conventions that demonstrate a lack of competence" ! ;-)
 */
 
 

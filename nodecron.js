@@ -2,6 +2,9 @@
 	nodecron.js
 	A Node.js-based editor for 'crontab'.
 	robcranfill@gmail.com
+	
+	Code conventions more or less as per http://javascript.crockford.com/code.html
+	"Avoid conventions that demonstrate a lack of competence" ! ;-)
 */
 var Crontab			= require("crontab");
 var Async 			= require("async");
@@ -18,18 +21,18 @@ var  SERVER_PATH_NAME = "/nodecron";
 // Content types map, indicated the only file types we'll serve.
 // (why limit it?)
 //
-var contentTypes_ = {
+var CONTENT_TYPES = {
 	".css":	"text/css",
 	".js":	"text/javascript"
 //	".html": "text/html",
 //	".json": "application/json",
 	};
 
+// for fun
+var REQUEST_COUNT = 0;
 
-var requestCount_ = 0;
-
-// The crontab and its job entries that we load on startup. XXX globals?!
-var crontab_;
+// The crontab and its job entries that we load on startup.
+var CRONTAB;
 
 
 /*
@@ -38,11 +41,11 @@ var crontab_;
 function router(req, resp) {
 
   console.log("-----------------------------------");
-	requestCount_++;
+	REQUEST_COUNT++;
 
 	var url = req.url;
   var parsedURL = Url.parse(url);
-  console.log("Request #%d for path %s received.", requestCount_, parsedURL.pathname);
+  console.log("Request #%d for path %s received.", REQUEST_COUNT, parsedURL.pathname);
 	console.log("pathname: %s", parsedURL.pathname);
 	console.log("    path: %s", parsedURL.path);
 	console.log("    href: %s", parsedURL.href);
@@ -79,18 +82,18 @@ function router(req, resp) {
   // Read the extension against the content type map.
   //
 	if (extension.length > 0) {
-	  if (!contentTypes_[extension]) {
+	  if (!CONTENT_TYPES[extension]) {
 			console.log("!Unknown content type '%s'!", extension);
 			handleBadRequest(resp);
 			return;
 			}
-	  var contentType = contentTypes_[extension];
+	  var contentType = CONTENT_TYPES[extension];
 	  console.log("contentType OK: " + contentType);
 
 	  // Serve the requested file.
 		//
 		var filename = Path.basename(parsedURL.path);
-	 	console.log("Serving file: " + filename);
+	 	console.log("Serving file '%s'....", filename);
 		var fileStream = Fs.createReadStream(filename);
 		fileStream.on("error", function(error) {
 			if (error.code === "ENOENT") {
@@ -105,11 +108,23 @@ function router(req, resp) {
 				}
 			});
 
+		// this doesn't ever fire?
+		// I thought perhaps we'd need to close the request, using this. But no.
+		fileStream.on("end", function() {
+				console.log("File %s served (end)", filename);
+			}
+		);
+
+
 		resp.writeHead(200, {"Content-Type": contentType});
 		fileStream.pipe(resp);
-
-		console.log("File served");
-
+		
+		// Neither of these are needed, apparently.
+		//
+		// handleGoodRequest(resp);
+		// resp.end();
+	
+		console.log("File %s served.", filename);
 		return;
 		}
 
@@ -166,28 +181,28 @@ function handleGET(httpResp, queryString) {
 			return;
 		}
 		console.log("delete #" + index);
-		console.log(" - which is: " + crontab_.jobs()[index]);
-		if (!crontab_.jobs()[index]) {
+		console.log(" - which is: " + CRONTAB.jobs()[index]);
+		if (!CRONTAB.jobs()[index]) {
 //			httpResp.end("Index out of bounds?")
 			handleBadRequest(httpResp);
 			return;
 			}
 
-		crontab_.remove(crontab_.jobs()[index]);
-		console.log("jobs are now " + crontab_.jobs().length + ": " + crontab_.jobs());
+		CRONTAB.remove(CRONTAB.jobs()[index]);
+		console.log("jobs are now " + CRONTAB.jobs().length + ": " + CRONTAB.jobs());
 
 // A little test for what if something goes wrong: puke on #3
 		var puke_on = -1; // -1 or 3;
 		if (index == puke_on)
 			{
-			httpResp.end("Actually OK - test case 3"); // fail
+			handleBadRequest(httpResp); // fail
 			}
 		else
 			{
-			doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
+			handleGoodRequest(httpResp);
 			}
 		return;
-		}
+		} // delete
 	
 	// Action = add?
 	//
@@ -210,7 +225,10 @@ function handleGET(httpResp, queryString) {
 		
 		console.log("Add: %s %s %s %s %s %s", q_min, q_hr, q_dom, q_mon, q_dow, q_cmd);
 
-		var newjob = crontab_.create(q_cmd);
+		// This actually adds the job now:
+		//
+		var newjob = CRONTAB.create(q_cmd);
+		
 		newjob.minute().at(q_min);
 		newjob.hour().at(q_hr);
 		newjob.dom().on(q_dom);
@@ -218,15 +236,14 @@ function handleGET(httpResp, queryString) {
 		newjob.dow().on(q_dow);
 
 		console.log("newjob is %j", newjob);
-
-//		crontab_.add(newjob);
-
-		console.log("jobs are now %d: %j", crontab_.jobs().length, crontab_.jobs());
+		console.log("jobs are now %d: %j", CRONTAB.jobs().length, CRONTAB.jobs());
 
 		console.log("End of add")
-		doMainPageWaterfall(httpResp, "");	// FIXME: just the current user, for now.
+			
+		handleGoodRequest(httpResp);
+
 		return;
-		}
+		} // add
 
 
 	handleBadRequest(httpResp); // really?
@@ -251,10 +268,10 @@ function doMainPageWaterfall(httpResponse, user) {
 		function(nextFunction) {
 			console.log("loadCrontab called for user '%s'", user);
 			
-			if (crontab_)
+			if (CRONTAB)
 			  {
 			  console.log("We already have one!");
-			  nextFunction(null, httpResponse, crontab_);
+			  nextFunction(null, httpResponse, CRONTAB);
 			  }
 			else
 				{
@@ -272,10 +289,10 @@ function doMainPageWaterfall(httpResponse, user) {
 						nextFunction("Can't get jobs?", null, null);	// ??? RIGHT?
 						return;
 						}
-					crontab_ = crontab;
-					console.log("Loaded crontab.jobs: " + crontab_.jobs());
+					CRONTAB = crontab;
+					console.log("Loaded crontab.jobs: " + CRONTAB.jobs());
 
-					nextFunction(null, httpResponse, crontab_);
+					nextFunction(null, httpResponse, CRONTAB);
 					}); // end .load handler
 
 				} // end else
@@ -291,7 +308,6 @@ function doMainPageWaterfall(httpResponse, user) {
 			httpResponse.writeHead(200, {"Content-Type": "text/html; charset=utf-8"});
 
 			console.log("Forming HTML for crontab with %d jobs", crontab.jobs().length);
-//			console.log("makePage httpResponse: %j", httpResponse);
 
 			var fileStream = Fs.createReadStream("./nodecron.top.html");
 			fileStream.on("error", function(error) {
@@ -306,6 +322,7 @@ function doMainPageWaterfall(httpResponse, user) {
 				  console.log("!Error 500!");
 					}
 				});
+
 			// We want to append all this *after* the header is done.
 			//
 			fileStream.on("end", function() {
@@ -327,7 +344,6 @@ function doMainPageWaterfall(httpResponse, user) {
 					httpResponse.write("  <td class='tableDayOfWeek'>" + job.dow() + "</td>\n");
 					httpResponse.write("  <td class='tableCommand'>" + job.command() + "</td>\n");
 					httpResponse.write(" </tr>\n");
-			
 					}
 					
 				// The 'Add' row.
@@ -355,7 +371,6 @@ function doMainPageWaterfall(httpResponse, user) {
 	//			nextFunction(null, "makePage done - OK!");	// end, for now
 	
 				console.log("Done appending variable HTML.");
-
 				});
 
 			// Start the piping of the static header; when it's done, the above function will fire.
@@ -364,7 +379,6 @@ function doMainPageWaterfall(httpResponse, user) {
 
 //			fileStream.pipe(httpResponse, {end: false});
 			fileStream.pipe(httpResponse);
-
 			}
 		],
 
@@ -382,7 +396,9 @@ function doMainPageWaterfall(httpResponse, user) {
 	} // doMainPageWaterfall
 
 
-
+/*
+	Start the server. Handle all onRequest events by sending them to the router function.
+*/
 function start(router) {
 
   function onRequest(request, response) {
@@ -418,5 +434,4 @@ function handleBadRequest(resp) {
 
 start(router);
 
-
-
+// End of nodecron.js
